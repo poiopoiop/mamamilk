@@ -55,7 +55,7 @@ if (isset($_POST['uname']) && isset($_POST['passwd']) && $_POST['uname']!='' && 
         $logger->addLog("NOTICE", "new success: [uname:$uname] [passwd:$passwd]");
 
         //set cookie
-        $utoken = Auth::buildCookie($ret['id'], $ret['utype'], UTOKEN_EFFECTIVE_PERIOD);
+        $utoken = Auth::buildUtoken($ret['id'], $ret['utype'], UTOKEN_EFFECTIVE_PERIOD);
         setcookie(COOKIE_KEY, $utoken, time()+UTOKEN_EFFECTIVE_PERIOD, COOKIE_DOMAIN);
         
         if ($from != NULL) {
