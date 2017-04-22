@@ -1,6 +1,6 @@
 <?php
 require_once('/home/ubuntu/workroot/include/NLog.class.php');
-require_once("/home/ubuntu/workroot/include/Id.class.php");
+require_once("/home/ubuntu/workroot/include/Auth.class.php");
 require_once("/home/ubuntu/workroot/tables/DB_Auth.class.php");
 
 define('COOKIE_KEY',                  'mmm_utoken');//miao登录信息的cookie名
@@ -50,9 +50,14 @@ if (isset($_POST['uname']) && isset($_POST['passwd']) && $_POST['uname']!='' && 
     $passwd2 = MD5($_POST['passwd2']);
     
     $ret = useradd($uname, $passwd, $passwd2);
-    if (ERRNO_SUCCESS == $ret) {
+    if (ERRNO_SUCCESS == $ret && $ret['id']>0) {
         echo "<b>创建新用户成功，感谢您的注册</b>";
         $logger->addLog("NOTICE", "new success: [uname:$uname] [passwd:$passwd]");
+
+        //set cookie
+        $utoken = Auth::buildCookie($ret['id'], $ret['utype'], UTOKEN_EFFECTIVE_PERIOD);
+        setcookie(COOKIE_KEY, $utoken, time()+UTOKEN_EFFECTIVE_PERIOD, COOKIE_DOMAIN);
+        
         if ($from != NULL) {
             header("location: $from");
         }
@@ -143,7 +148,7 @@ function useradd($uname, $passwd, $passwd2) {
     }
 
     $db = new DB_Auth();
-    $ret = $db->newUser($uname, $passwd, DB_Auth::UTYPE_NEW_USER);
+    $ret = $db->newUser($uname, $passwd, Auth::UTYPE_NEW_USER);
 
     if (false == $ret['ret'] && preg_match("/^Duplicate entry/", $ret['error'])) {
         return ERRNO_UNAME_EXIST;
