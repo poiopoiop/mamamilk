@@ -14,7 +14,12 @@ define('ERRNO_UID_NOT_EXIST',         -4);
 define('ERRNO_UNAME_NOT_EXIST',       -5);
 define('ERRNO_WRONG_PASSWD',          -6);
 define('ERRNO_UNAME_ILLEGAL',         -7);
+define('ERRNO_UNAME_EXIST',           -100);
+define('ERRNO_UNAME_TOO_LONG',        -101);
+define('ERRNO_PASSWD_NOT_SAME',       -102);
+define('ERRNO_NEW_USER_FAILED',       -103);
 
+define('UNAME_MAX_LENGTH',            20);
 
 $logger = new NLog();
 $logger->init('./log/login.log');
@@ -33,24 +38,56 @@ if (!isset($_POST['uname'])) {
 if (!isset($_POST['passwd'])) {
     $_POST['passwd'] = '';
 }
+if (!isset($_POST['passwd2'])) {
+    $_POST['passwd2'] = '';
+}
 
 page_head($from_params);
 
 if (isset($_POST['uname']) && isset($_POST['passwd']) && $_POST['uname']!='' && $_POST['passwd']!='') {
-    $uname  = trim($_POST['uname']);
-    $passwd = MD5($_POST['passwd']);
+    $uname   = trim($_POST['uname']);
+    $passwd  = MD5($_POST['passwd']);
+    $passwd2 = MD5($_POST['passwd2']);
     
-    //$ret = login($uname, $passwd);
+    $ret = useradd($uname, $passwd, $passwd2);
     if (ERRNO_SUCCESS == $ret) {
-        echo "<b>login success</b>";
-        $logger->addLog("NOTICE", "login success: [uname:$uname] [passwd:$passwd]");
+        echo "<b>创建新用户成功，感谢您的注册</b>";
+        $logger->addLog("NOTICE", "new success: [uname:$uname] [passwd:$passwd]");
         if ($from != NULL) {
             header("location: $from");
         }
     }
+    elseif(ERRNO_UNAME_EXIST == $ret) {
+        echo "<b>该用户名已存在，请前往登录页，或选择新的用户名</b>";
+        $logger->addLog("NOTICE", "new failed: [errno:$ret] [uname:$uname] [passwd:$passwd]");
+
+        //rm cookie
+        setcookie(COOKIE_KEY, "", time()-3600, COOKIE_DOMAIN);
+    }
+    elseif(ERRNO_UNAME_TOO_LONG == $ret) {
+        echo "<b>用户名超过12字符，请重新输入</b>";
+        $logger->addLog("NOTICE", "new failed: [errno:$ret] [uname:$uname] [passwd:$passwd]");
+
+        //rm cookie
+        setcookie(COOKIE_KEY, "", time()-3600, COOKIE_DOMAIN);
+    }
+    elseif(ERRNO_PASSWD_NOT_SAME == $ret) {
+        echo "<b>两次输入的密码不一致，请重新输入</b>";
+        $logger->addLog("NOTICE", "new failed: [errno:$ret] [uname:$uname] [passwd:$passwd]");
+
+        //rm cookie
+        setcookie(COOKIE_KEY, "", time()-3600, COOKIE_DOMAIN);
+    }
+    elseif (false == $ret) {
+        echo "<b>创建新用户失败，请确认您输入的信息</b>";
+        $logger->addLog("NOTICE", "new failed: [errno:$ret] [uname:$uname] [passwd:$passwd]");
+
+        //rm cookie
+        setcookie(COOKIE_KEY, "", time()-3600, COOKIE_DOMAIN);
+    }
     else {
-        echo "<b>login failed</b>";
-        $logger->addLog("NOTICE", "login failed: [errno:$ret] [uname:$uname] [passwd:$passwd]");
+        echo "<b>创建新用户失败，请确认您输入的信息</b>";
+        $logger->addLog("NOTICE", "new failed: [errno:$ret] [uname:$uname] [passwd:$passwd]");
 
         //rm cookie
         setcookie(COOKIE_KEY, "", time()-3600, COOKIE_DOMAIN);
@@ -60,16 +97,13 @@ if (isset($_POST['uname']) && isset($_POST['passwd']) && $_POST['uname']!='' && 
 page_tail();
 
 /////////////////////////////////////////////////////////
-
-
-/////////////////////////////////////////////////////////
 function page_head($from) {
 echo '
 <html>
-<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>用户登录</title></head>
+<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>创建新用户</title></head>
 <body>
 
-<form style="width:2000 height:3000" onsubmit = "return checkinput()" action="http://52.68.164.129/login?from='.$from.'" method="post">
+<form style="width:2000 height:3000" onsubmit = "return checkinput()" action="https://52.68.164.129/new?from='.$from.'" method="post">
 
 用户名: 
 <input type="text" name="uname" value="'.$_POST['uname'].'"/>
@@ -77,10 +111,13 @@ echo '
 密码&nbsp: 
 <input type="password" name="passwd" value="'.$_POST['passwd'].'"/>
 <br>
+再次输入密码&nbsp: 
+<input type="password" name="passwd2" value="'.$_POST['passwd2'].'"/>
+<br>
 <br>
 
-<input type="submit" value="登录">
-</form><form action="http://52.68.164.129/mamamilk/new.php" mothod="get"><input type="submit" value="创建新用户"></form>';
+<input type="submit" value="创建">
+</form>';
 }
 
 
@@ -90,4 +127,32 @@ echo '
 </html>
 ';
 }
+
+/////////////////////////////////////////////////////////
+
+function useradd($uname, $passwd, $passwd2) {
+    //sql注入防护
+    if (!preg_match("/^[a-zA-Z0-9_]*$/", $uname)) {
+        return ERRNO_UNAME_ILLEGAL;
+    }
+    if (strlen($uname)>UNAME_MAX_LENGTH) {
+        return ERRNO_UNAME_TOO_LONG;
+    }
+    if ($passwd != $passwd2) {
+        return ERRNO_PASSWD_NOT_SAME;
+    }
+
+    $db = new DB_Auth();
+    $ret = $db->newUser($uname, $passwd, DB_Auth::UTYPE_NEW_USER);
+
+    if (false == $ret['ret'] && preg_match("/^Duplicate entry/", $ret['error'])) {
+        return ERRNO_UNAME_EXIST;
+    }
+    elseif (false == $ret['ret']) {
+        return ERRNO_NEW_USER_FAILED;
+    }
+
+    return ERRNO_SUCCESS;
+}
+
 
